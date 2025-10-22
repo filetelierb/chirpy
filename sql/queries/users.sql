@@ -7,3 +7,6 @@ VALUES (
     $2
 )
 RETURNING *;
+
+-- name: ClearUserTable :exec
+DELETE FROM users;

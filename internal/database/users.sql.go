@@ -11,6 +11,15 @@ import (
 	"github.com/google/uuid"
 )
 
+const clearUserTable = `-- name: ClearUserTable :exec
+DELETE FROM users
+`
+
+func (q *Queries) ClearUserTable(ctx context.Context) error {
+	_, err := q.db.ExecContext(ctx, clearUserTable)
+	return err
+}
+
 const createUser = `-- name: CreateUser :one
 INSERT INTO users (id, created_at, updated_at, email)
 VALUES (
