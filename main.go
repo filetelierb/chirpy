@@ -163,6 +163,119 @@ func (cfg *apiConfig) handlerCreateUser(w http.ResponseWriter, rq *http.Request)
 
 }
 
+func (cfg *apiConfig) handlerCreateChirpy(w http.ResponseWriter, rq *http.Request){
+	type RequestBody struct{
+		Body string `json:"body"`
+		UserID uuid.UUID `json:"user_id"`
+	}
+
+	type cleanedBody struct {
+		Error       string `json:"error"`
+		CleanedBody string `json:"cleaned_body"`
+	}
+
+	type responseValue struct{
+		ID uuid.UUID `json:"id"`
+		CreatedAt int `json:"created_at"`
+		UpdatedAt int `json:"updated_at"`
+		Body string `json:"body"`
+		UserID uuid.UUID `json:"user_id"`
+	}
+
+	rBody := RequestBody{}
+	decoder := json.NewDecoder(rq.Body)
+	err := decoder.Decode(&rBody)
+	if err != nil {
+		fmt.Printf("Error decoding the body: %v", err)
+		w.WriteHeader(500)
+		return
+	}
+
+	respBody := cleanedBody{}
+
+	if len(rBody.Body) <= 140 {
+		badWords := [3]string{
+			"kerfuffle",
+			"sharbert",
+			"fornax",
+		}
+		respBody.CleanedBody = rBody.Body
+
+		for _, bw := range badWords {
+			repWord := "****"
+			bw2 := strings.ToUpper(bw[:1]) + bw[1:]
+			respBody.CleanedBody = strings.ReplaceAll(respBody.CleanedBody, bw, repWord)
+			respBody.CleanedBody = strings.ReplaceAll(respBody.CleanedBody, bw2, repWord)
+		}
+	} else {
+		respBody.Error = "Chirp is too long"
+		w.WriteHeader(400)
+		return
+	}
+
+	db := cfg.db
+	chirp, err := db.CreateChirp(rq.Context(), database.CreateChirpParams{
+		ID: uuid.New(),
+		Body: respBody.CleanedBody,
+		UserID: uuid.NullUUID{
+			UUID: rBody.UserID,
+			Valid: true,
+		},
+	})
+	if err != nil {
+		fmt.Printf("Error creating the chirp: %v", err)
+		w.WriteHeader(500)
+		return
+	}
+	rValue := responseValue{
+		ID: chirp.ID,
+		CreatedAt: int(chirp.CreatedAt.UnixMilli()),
+		UpdatedAt: int(chirp.UpdatedAt.UnixMilli()),
+		Body: chirp.Body,
+		UserID: chirp.UserID.UUID,
+	}
+	data, err := json.Marshal(rValue)
+	if err != nil {
+		fmt.Printf("Error encoding the new chirp: %v", err)
+		w.WriteHeader(500)
+		return
+	}
+	w.WriteHeader(201)
+	w.Header().Add("Content-Type","application/json")
+	w.Write(data)
+
+}
+
+func (cfg *apiConfig) handlerGetChirps(w http.ResponseWriter, rq *http.Request){
+	type responsePayload struct {
+		ID uuid.UUID `json:"id"`
+		CreatedAt int `json:"created_at"`
+		UpdatedAt int `json:"updated_at"`
+		Body string `json:"body"`
+		UserID uuid.UUID `json:"user_id"`
+	}
+
+	db := cfg.db
+
+	chirps, err := db.GetChirps(rq.Context())
+	if err != nil{
+		fmt.Printf("Error fetching chirps: %v", err)
+		w.WriteHeader(500)
+		return
+	}
+	var resp []responsePayload
+	for i, chirp := range chirps {
+		resp[i] = responsePayload{
+			ID: chirp.ID,
+			CreatedAt: int(chirp.CreatedAt.UnixMilli()),
+			UpdatedAt: int(chirp.UpdatedAt.UnixMilli()),
+			Body: chirp.Body,
+			
+		}
+	}
+	data, err := json.Marshal()
+}
+
 func main() {
 	godotenv.Load()
 	mux := http.NewServeMux()
@@ -190,6 +303,7 @@ func main() {
 	mux.HandleFunc("GET /api/healthz", handlerReadiness)
 	mux.HandleFunc("POST /api/validate_chirp", handlerVerifyChirp)
 	mux.HandleFunc("POST /api/users", apiCfg.handlerCreateUser)
+	mux.HandleFunc("POST /api/chirps", apiCfg.handlerCreateChirpy)
 
 	server.ListenAndServe()
 
