@@ -264,16 +264,60 @@ func (cfg *apiConfig) handlerGetChirps(w http.ResponseWriter, rq *http.Request){
 		return
 	}
 	var resp []responsePayload
-	for i, chirp := range chirps {
-		resp[i] = responsePayload{
+	for _, chirp := range chirps {
+		resp = append(resp,  responsePayload{
 			ID: chirp.ID,
 			CreatedAt: int(chirp.CreatedAt.UnixMilli()),
 			UpdatedAt: int(chirp.UpdatedAt.UnixMilli()),
 			Body: chirp.Body,
+			UserID: chirp.UserID.UUID,
 			
-		}
+		})
 	}
-	data, err := json.Marshal()
+	data, err := json.Marshal(resp)
+	if err != nil {
+		fmt.Printf("Error encoding chirps: %v", err)
+		w.WriteHeader(500)
+		return
+	}
+
+	w.WriteHeader(200)
+	w.Header().Add("Content-Type","application/json")
+	w.Write(data)
+}
+
+func (cfg *apiConfig) handlerGetSingleChirp(w http.ResponseWriter, rq *http.Request){
+	type responsePayload struct {
+		ID uuid.UUID `json:"id"`
+		CreatedAt int `json:"created_at"`
+		UpdatedAt int `json:"updated_at"`
+		Body string `json:"body"`
+		UserID uuid.UUID `json:"user_id"`
+	}
+
+	db := cfg.db
+
+	chirp, err := db.GetSingleChirp(rq.Context(), uuid.MustParse(rq.PathValue("chirpID")) )
+	if err != nil {
+		w.WriteHeader(404)
+		return
+	}
+
+	resp := responsePayload{
+		ID: chirp.ID,
+		CreatedAt: int(chirp.CreatedAt.UnixMilli()),
+		UpdatedAt: int(chirp.CreatedAt.UnixMilli()),
+		Body: chirp.Body,
+		UserID: chirp.UserID.UUID,
+	}
+	data, err := json.Marshal(resp)
+	if err != nil {
+		w.WriteHeader(500)
+		return
+	}
+	w.WriteHeader(200)
+	w.Header().Add("Content-Type","application/json")
+	w.Write(data)
 }
 
 func main() {
@@ -304,7 +348,8 @@ func main() {
 	mux.HandleFunc("POST /api/validate_chirp", handlerVerifyChirp)
 	mux.HandleFunc("POST /api/users", apiCfg.handlerCreateUser)
 	mux.HandleFunc("POST /api/chirps", apiCfg.handlerCreateChirpy)
-
+	mux.HandleFunc("GET /api/chirps", apiCfg.handlerGetChirps)
+	mux.HandleFunc("GET /api/chirps/{chirpID}",apiCfg.handlerGetSingleChirp)
 	server.ListenAndServe()
 
 }
