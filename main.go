@@ -320,6 +320,44 @@ func (cfg *apiConfig) handlerGetSingleChirp(w http.ResponseWriter, rq *http.Requ
 	w.Write(data)
 }
 
+func (cfg *apiConfig) handlerLogin(w http.ResponseWriter, rq *http.Request){
+	type requestBody struct {
+		Email string `json:"email"`
+		Password string `json:"password"`
+	}
+
+	type errorBody struct {
+		Message string `json:"message"`
+	}
+
+	rBody := requestBody{}
+
+	decoder := json.NewDecoder(rq.Body);
+	err := decoder.Decode(&rBody)
+	if err != nil {
+		w.WriteHeader(500)
+		return ;
+	}
+	db := cfg.db
+	user, err := db.GetUserByEmail(rq.Context(), rBody.Email)
+	if err != nil || user.HashedPassword != rBody.Password{
+		errResponse := errorBody {
+			Message: "Incorrect email or password",
+		}
+		errData, err := json.Marshal(errResponse)
+		if err == nil {
+			w.Write(errData)
+			w.WriteHeader(401)
+		} else if err != nil{
+			w.WriteHeader(500)
+		}
+		return ;
+	}
+	
+
+
+}
+
 func main() {
 	godotenv.Load()
 	mux := http.NewServeMux()
@@ -350,6 +388,7 @@ func main() {
 	mux.HandleFunc("POST /api/chirps", apiCfg.handlerCreateChirpy)
 	mux.HandleFunc("GET /api/chirps", apiCfg.handlerGetChirps)
 	mux.HandleFunc("GET /api/chirps/{chirpID}",apiCfg.handlerGetSingleChirp)
+	mux.HandleFunc("POST /api/login", apiCfg.handlerLogin)
 	server.ListenAndServe()
 
 }

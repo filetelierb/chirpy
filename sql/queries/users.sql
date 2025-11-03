@@ -10,3 +10,7 @@ RETURNING *;
 
 -- name: ClearUserTable :exec
 DELETE FROM users;
+
+-- name: GetUserByEmail :one
+SELECT * FROM users
+WHERE users.email = $1;
