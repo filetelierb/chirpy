@@ -10,6 +10,7 @@ import (
 	"sync/atomic"
 
 	"database/sql"
+	"github.com/filetelierb/chirpy/internal/auth"
 
 	"github.com/filetelierb/chirpy/internal/database"
 	"github.com/google/uuid"
@@ -115,6 +116,7 @@ func (cfg *apiConfig) handlerResetReqNum(w http.ResponseWriter, rq *http.Request
 func (cfg *apiConfig) handlerCreateUser(w http.ResponseWriter, rq *http.Request) {
 	type RequestBody struct {
 		Email string `json:"email"`
+		Password string `json:"password"`
 	}
 
 	type responseValue struct {
@@ -131,11 +133,18 @@ func (cfg *apiConfig) handlerCreateUser(w http.ResponseWriter, rq *http.Request)
 		w.WriteHeader(500)
 		return
 	}
+	hashedPw, err := auth.HashedPassword(rBody.Password)
+	if err != nil{
+		log.Printf("Something went wrong hashing the password")
+		w.WriteHeader(500)
+		return 
+	}
 	newUser, err := cfg.db.CreateUser(
 		rq.Context(),
 		database.CreateUserParams{
 			ID:    uuid.New(),
 			Email: rBody.Email,
+			HashedPassword: hashedPw,
 		})
 	if err != nil {
 		log.Printf("Something went wrong creating the user: %v", err)
@@ -336,26 +345,47 @@ func (cfg *apiConfig) handlerLogin(w http.ResponseWriter, rq *http.Request){
 	err := decoder.Decode(&rBody)
 	if err != nil {
 		w.WriteHeader(500)
-		return ;
+		return 
 	}
 	db := cfg.db
 	user, err := db.GetUserByEmail(rq.Context(), rBody.Email)
-	if err != nil || user.HashedPassword != rBody.Password{
+	if err != nil {
+		w.WriteHeader(401)
+		return
+	} else if match, err := auth.CheckPasswordHash(rBody.Password, user.HashedPassword) ; err !=  nil || !match {
 		errResponse := errorBody {
 			Message: "Incorrect email or password",
 		}
 		errData, err := json.Marshal(errResponse)
 		if err == nil {
-			w.Write(errData)
 			w.WriteHeader(401)
-		} else if err != nil{
+			w.Write(errData)
+			return
+		} else {
 			w.WriteHeader(500)
+			return
 		}
-		return ;
 	}
-	
-
-
+	type responsePayload struct {
+		ID uuid.UUID `json:"id"`
+		CreatedAt int `json:"created_at"`
+		UpdatedAt int `json:"updated_at"`
+		Email string `json:"email"`
+	}
+	respBody := responsePayload {
+		ID: user.ID,
+		CreatedAt: int(user.CreatedAt.UnixMilli()),
+		UpdatedAt: int(user.UpdatedAt.UnixMilli()),
+		Email: user.Email,
+	}
+	data, err := json.Marshal(respBody)
+	if err != nil {
+		w.WriteHeader(500)
+		return 
+	}
+	w.Write(data)
+	w.WriteHeader(201)
+	return
 }
 
 func main() {
